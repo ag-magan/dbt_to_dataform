@@ -170,7 +170,7 @@ After running the converter:
 
 Always review the conversion report and test thoroughly after conversion to ensure all critical functionality is preserved.
 
-#Credit
+# Credit
 All credit to https://github.com/rittmananalytics/ra_dbt_to_dataform/tree/main
 
 # Contributing
