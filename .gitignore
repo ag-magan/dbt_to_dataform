@@ -1,3 +1,44 @@
-dbt_to_dataform/__pycache__
-venv
+# Python virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Test files
+test_*.py
+tests/
+
+# API keys and credentials
+*.pem
+*.key
+.env
+credentials.json
+
+# System files
 .DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs and databases
+*.log
+*.sqlite3
+*.db
+
+# Conversion outputs
+conversion_report.json
+conversion_summary.txt

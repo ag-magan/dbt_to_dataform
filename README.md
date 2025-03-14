@@ -2,18 +2,18 @@
 
 This tool partially automates the process of converting dbt (data build tool) projects to Dataform, focusing on BigQuery as the data warehouse. It not a turn-key tool that handles all aspects of the migration for you, but it will take care of the simple (and some more complex) tasks so that you can concentrate on the more complex parts.
 
-It also optionally leverages OpenAI's API for complex conversions and syntax checking; to make use of this feature you will need an OpenAI API key.
+It leverages Anthropic's Claude API for complex conversions and syntax checking; to make use of these features you will need an Anthropic API key.
 
 # Features
 
 - Converts dbt models to Dataform SQLX files, with limitations as detailed below
 - Translates dbt source definitions to Dataform declarations
-- Converts dbt macros to Dataform functions using GPT-4 (requires OpenAI API key)
+- Converts dbt macros to Dataform functions using Claude 3.7 Sonnet (requires Anthropic API key)
 - Preserves project structure, adapting it to Dataform best practices
 - Handles (with limitations) dbt-specific Jinja syntax and converts it to JavaScript
 - Supports conversion of dbt variables to Dataform project config variables
 - Automatically converts common dbt_utils functions to their BigQuery equivalents
-- Uses GPT-4 to check and correct Dataform syntax in converted files (requires OpenAI API key)
+- Uses Claude to check and correct Dataform syntax in converted files (requires Anthropic API key)
 - Generates a detailed conversion report highlighting potential issues and syntax corrections
 
 ## How does it work?
@@ -42,10 +42,11 @@ The migration process comprises seven steps:
 
 5. **Macro Conversion**:
    - The MacroConverter transforms dbt macros into Dataform JavaScript functions.
-   - Macros are converted using the OpenAI API, for manual review, correction and completion
+   - Macros are converted using the Anthropic Claude API, for manual review, correction and completion
 
 6. **Syntax Checking and Correction**:
-   - The SyntaxChecker uses the OpenAI API to verify and correct Dataform syntax in converted files.
+   - The SyntaxChecker uses the Anthropic Claude API to verify and correct Dataform syntax in converted files.
+   - Claude's powerful language understanding capabilities enable it to handle complex macros effectively.
 
 7. **Report Generation**:
    - The ConversionReport creates a detailed report of the conversion process.
@@ -66,43 +67,23 @@ The following dbt_utils functions are automatically converted to their BigQuery 
 9. `{{ dbt_utils.date_trunc(...) }}` -> `DATE_TRUNC(...)`
 10. `{{ dbt_utils.date_part(...) }}` -> `EXTRACT(...)`
 
-## Use of OpenAI API
+## Use of Anthropic Claude API
 
 1. **dbt Jinja Macro Conversions**:
-   - The `MacroConverter` class uses GPT-4, via the OpenAI API, to convert dbt Jinja macros to Dataform JavaScript functions.
+   - The `MacroConverter` class uses Claude 3.7 Sonnet to convert dbt Jinja macros to Dataform JavaScript functions.
    - It sends the dbt macro code to the API and receives a converted JavaScript function.
-   - Prompt example:
-     ```
-     Convert the following dbt macro to a JavaScript function for Dataform:
-
-     {dbt_macro_content}
-
-     Follow these guidelines:
-     1. Convert Python/Jinja syntax to JavaScript.
-     2. Replace dbt-specific functions with Dataform equivalents where possible.
-     3. For SQL generation, use JavaScript template literals.
-     4. If there's no direct Dataform equivalent for a dbt function, implement the functionality in JavaScript.
-     5. Add any necessary comments or explanations.
-
-     Provide only the converted JavaScript function:
-     ```
-   - The API returns a JavaScript function that can be used in Dataform.
+   - The system prompt includes detailed guidelines and examples for conversion, with specific instructions for:
+     - Proper JavaScript error handling
+     - Variable scope and closure handling
+     - BigQuery-specific SQL function handling
+     - Converting Jinja template logic to JavaScript
+   - Claude's powerful language understanding capabilities enable it to handle complex macros effectively.
 
 2. **Syntax Checking and Correction**:
-   - The `SyntaxChecker` class uses GPT-4, via the OpenAI API, to verify and correct the syntax of converted Dataform files.
+   - The `SyntaxChecker` class uses Claude to verify and correct the syntax of converted Dataform files.
    - It sends the converted SQLX content to the API, which checks for Dataform-specific syntax issues and suggests corrections.
-   - Prompt example:
-     ```
-     Check if the following Dataform SQLX code is valid. If it's not valid, correct it and explain the changes made.
-     If it's valid, just respond with "Valid".
-
-     Always include the full corrected code in your response, even if only small changes were made.
-     Wrap the corrected code in ```sqlx and ``` tags.
-
-     Code:
-     {sqlx_content}
-     ```
-   - The API returns either "Valid" or a corrected version of the SQLX code with explanations.
+   - The system prompt includes detailed guidance on Dataform's SQLX structure and common issues to look for.
+   - Claude's high performance on code tasks makes it particularly effective at catching and fixing subtle syntax issues.
 
 # Setup
 
@@ -122,14 +103,35 @@ source venv/bin/activate  # On Windows use venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+## API Key Security
+
+This tool uses the Anthropic Claude API for complex conversions. To securely use this feature:
+
+1. Create a `.env` file by copying the provided example:
+```
+cp .env.example .env
+```
+
+2. Edit the `.env` file to add your actual Anthropic API key:
+```
+ANTHROPIC_API_KEY=your-actual-api-key
+```
+
+3. **IMPORTANT**: Never commit your `.env` file or expose your API key in public repositories. The `.gitignore` file is already configured to exclude `.env` files.
+
+You can also provide the API key directly as a command-line argument:
+```
+python main.py <dbt_repo_path> <output_path> --anthropic-api-key your-api-key
+```
+
 # Usage
 
 ```bash
-python main.py <dbt_repo_path> <output_path> --openai-api-key <your-api-key>
+python main.py <dbt_repo_path> <output_path> --anthropic-api-key <your-api-key>
 ```
 <dbt_repo_path>: Path to the local dbt repository
 <output_path>: Path to output the Dataform project
---openai-api-key: Optional. Your OpenAI API key for complex conversions and syntax checking
+--anthropic-api-key: Optional. Your Anthropic API key for complex conversions and syntax checking
 --verbose: Optional. Enable verbose output
 
 ## Post-Conversion Steps
@@ -142,7 +144,7 @@ After running the converter:
 - Implement any custom logic that couldn't be automatically converted
 - Update any remaining dbt-specific syntax or functions that weren't automatically handled
 
-Limitations
+# Limitations
 
 - Complex dbt macros may require manual adjustment after conversion
 - Custom dbt tests might need additional implementation in Dataform
@@ -169,7 +171,8 @@ Limitations
 Always review the conversion report and test thoroughly after conversion to ensure all critical functionality is preserved.
 
 
-Contributing
+# Contributing
 Contributions to improve the converter are welcome. Please submit pull requests with clear descriptions of the changes and their purposes.
-License
+
+# License
 MIT License

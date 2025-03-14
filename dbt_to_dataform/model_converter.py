@@ -57,34 +57,67 @@ class ModelConverter:
     def _convert_config(self, content: str) -> str:
         config_match = re.search(r'\{\{\s*config\((.*?)\)\s*\}\}', content, re.DOTALL)
         if config_match:
-            config_content = config_match.group(1)
-            config_dict = yaml.safe_load(f"config: {{{config_content}}}")['config']
-            config_items = []
-            
-            # Set default type if not specified
-            if 'materialized' not in config_dict:
-                config_items.append("  type: \"table\"")
-            
-            for k, v in config_dict.items():
-                if k == 'materialized':
-                    config_items.append(f"  type: \"{v}\"")
-                elif k == 'enabled':
-                    if isinstance(v, str) and v.startswith('var('):
-                        var_name = re.search(r'var\([\'"](\w+)[\'"]\)', v).group(1)
-                        config_items.append(f"  disabled: ${{!dataform.projectConfig.vars.{var_name}}}")
+            try:
+                config_content = config_match.group(1)
+                
+                # Manual parsing instead of using yaml.safe_load to handle complex configs
+                config_dict = {}
+                
+                # Process each key-value pair manually
+                pairs = re.findall(r'(\w+)\s*=\s*(.*?)(?:,\s*\w+\s*=|\s*\)$)', config_content + ",", re.DOTALL)
+                
+                for key, raw_value in pairs:
+                    # Handle array values specially
+                    if re.search(r'\[\s*["\']\w+', raw_value):
+                        # Clean up array values
+                        array_values = re.findall(r'["\']([^"\']+)["\']', raw_value)
+                        config_dict[key] = array_values
                     else:
-                        config_items.append(f"  disabled: {str(not v).lower()}")
-                else:
-                    config_items.append(f"  {k}: {self._format_config_value(v)}")
-            
-            return "config {\n" + ",\n".join(config_items) + "\n}"
+                        # Clean up other values (remove quotes if needed)
+                        clean_value = raw_value.strip().strip('\'"')
+                        # Handle environment variables
+                        if 'env_var' in clean_value:
+                            env_var_match = re.search(r'env_var\(["\'](\w+)["\']\)', clean_value)
+                            if env_var_match:
+                                config_dict[key] = f"env_var(\"{env_var_match.group(1)}\")"
+                        else:
+                            config_dict[key] = clean_value
+                
+                config_items = []
+                
+                # Set default type if not specified
+                if 'materialized' not in config_dict:
+                    config_items.append("  type: \"table\"")
+                
+                for k, v in config_dict.items():
+                    if k == 'materialized':
+                        config_items.append(f"  type: \"{v}\"")
+                    elif k == 'enabled':
+                        if isinstance(v, str) and v.startswith('var('):
+                            var_name = re.search(r'var\([\'"](\w+)[\'"]\)', v).group(1)
+                            config_items.append(f"  disabled: ${{!dataform.projectConfig.vars.{var_name}}}")
+                        else:
+                            config_items.append(f"  disabled: {str(not v).lower()}")
+                    else:
+                        config_items.append(f"  {k}: {self._format_config_value(v)}")
+                
+                return "config {\n" + ",\n".join(config_items) + "\n}"
+            except Exception as e:
+                print(f"Error in config conversion: {str(e)}")
+                return "config {\n  type: \"table\"\n}"
         return "config {\n  type: \"table\"\n}"
 
     def _format_config_value(self, value):
         if isinstance(value, str):
+            if value.startswith('env_var('):
+                return value
             return f"\"{value}\""
         elif isinstance(value, bool):
             return str(value).lower()
+        elif isinstance(value, list):
+            if all(isinstance(item, str) for item in value):
+                return "[\"" + "\", \"".join(value) + "\"]"
+            return str(value)
         else:
             return str(value)
 

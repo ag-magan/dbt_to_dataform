@@ -18,7 +18,7 @@ from dbt_to_dataform.source_converter import SourceConverter
 from dbt_to_dataform.conversion_report import ConversionReport
 from dbt_to_dataform.syntax_checker import SyntaxChecker
 
-def main(dbt_repo_path: str, output_path: str, openai_api_key: str = None, verbose: bool = False):
+def main(dbt_repo_path: str, output_path: str, anthropic_api_key: str = None, verbose: bool = False):
 
     # Initialize components
     analyzer = RepositoryAnalyzer(dbt_repo_path)
@@ -28,7 +28,7 @@ def main(dbt_repo_path: str, output_path: str, openai_api_key: str = None, verbo
     artifacts = analyzer.analyze()
     dbt_config = analyzer.get_project_config()
     conversion_report = ConversionReport(Path(output_path))
-    syntax_checker = SyntaxChecker(openai_api_key) if openai_api_key else None
+    syntax_checker = SyntaxChecker(anthropic_api_key) if anthropic_api_key else None
 
     # Extract project variables
     project_variables = dbt_config.get('vars', {})
@@ -60,10 +60,20 @@ def main(dbt_repo_path: str, output_path: str, openai_api_key: str = None, verbo
     source_converter = SourceConverter(Path(dbt_repo_path), Path(output_path))
     source_tables = source_converter.convert_sources()
     
-    if openai_api_key:
-        print("Converting macros...")
-        macro_converter = MacroConverter(openai_api_key)
-        macro_converter.convert_macros(dbt_repo_path, output_path)
+    if anthropic_api_key:
+        print("Converting macros using Claude API...")
+        try:
+            macro_converter = MacroConverter(anthropic_api_key)
+            macro_converter.convert_macros(dbt_repo_path, output_path)
+        except Exception as e:
+            print(f"Error during macro conversion: {str(e)}")
+            conversion_report.add_issue(
+                "macro_conversion",
+                "Macro Conversion Error",
+                f"Error occurred during macro conversion: {str(e)}"
+            )
+            print("Continuing with other parts of the conversion...")
+            macro_converter = None  # Set to None to avoid later reference errors
 
     print("Converting models...")
     model_converter = ModelConverter(project_variables, dbt_models_dir, source_tables)
@@ -85,13 +95,17 @@ def main(dbt_repo_path: str, output_path: str, openai_api_key: str = None, verbo
 
             print(f"Converting model: {model_path.relative_to(dbt_models_dir)} to {output_file_path}")
 
-            # Check and correct syntax if OpenAI API key is provided
+            # Check and correct syntax if Anthropic API key is provided
             if syntax_checker:
                 print(f"Performing syntax check for {output_file_path}")
-                sqlx_content, corrections = syntax_checker.check_and_correct_syntax(output_file_path, sqlx_content, conversion_report)
-                if verbose and corrections:
-                    print(f"Syntax corrections for {output_file_path}:")
-                    print(corrections)
+                try:
+                    sqlx_content, corrections = syntax_checker.check_and_correct_syntax(output_file_path, sqlx_content, conversion_report)
+                    if verbose and corrections:
+                        print(f"Syntax corrections for {output_file_path}:")
+                        print(corrections)
+                except Exception as e:
+                    print(f"Error during syntax check for {output_file_path}: {str(e)}")
+                    print("Continuing with unconverted content...")
             else:
                 print("Syntax checker not available. Skipping syntax check.")
 
@@ -141,10 +155,14 @@ def main(dbt_repo_path: str, output_path: str, openai_api_key: str = None, verbo
                 if dataform_sqlx:
                     if syntax_checker:
                         print(f"Performing syntax check for metadata: {output_def_path}")
-                        dataform_sqlx, corrections = syntax_checker.check_and_correct_syntax(output_def_path, dataform_sqlx, conversion_report)
-                        if verbose and corrections:
-                            print(f"Syntax corrections for {output_def_path}:")
-                            print(corrections)
+                        try:
+                            dataform_sqlx, corrections = syntax_checker.check_and_correct_syntax(output_def_path, dataform_sqlx, conversion_report)
+                            if verbose and corrections:
+                                print(f"Syntax corrections for {output_def_path}:")
+                                print(corrections)
+                        except Exception as e:
+                            print(f"Error during syntax check for metadata: {output_def_path}: {str(e)}")
+                            print("Continuing with unconverted content...")
                     output_def_path.write_text(dataform_sqlx)
                 else:
                     print(f"Skipping empty or invalid schema file: {yaml_path}")
@@ -155,9 +173,17 @@ def main(dbt_repo_path: str, output_path: str, openai_api_key: str = None, verbo
                 traceback.print_exc()
                 print("Skipping this metadata file and continuing with the next...")
 
-    if openai_api_key:
+    if anthropic_api_key and 'macro_converter' in locals() and macro_converter:
         print("Updating macro references...")
-        macro_converter.update_macro_references(output_path)
+        try:
+            macro_converter.update_macro_references(output_path)
+        except Exception as e:
+            print(f"Error updating macro references: {str(e)}")
+            conversion_report.add_issue(
+                "macro_references",
+                "Macro Reference Update Error",
+                f"Error occurred during macro reference updates: {str(e)}"
+            )
 
     conversion_report.generate_report()
 
@@ -168,9 +194,9 @@ if __name__ == "__main__":
     parser.add_argument("dbt_repo_path", help="Path to the local dbt repository")
     parser.add_argument("output_path", help="Path to output the Dataform project")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
-    parser.add_argument("--openai-api-key", help="OpenAI API key for complex conversions", default=None)
+    parser.add_argument("--anthropic-api-key", help="Anthropic Claude API key for complex conversions", default=None)
 
     args = parser.parse_args()
 
-    main(args.dbt_repo_path, args.output_path, args.openai_api_key, args.verbose)
+    main(args.dbt_repo_path, args.output_path, args.anthropic_api_key, args.verbose)
 
